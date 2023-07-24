@@ -1,5 +1,9 @@
 # PopVar-Tutorial
 
+## About PopVar
+
+Implementing GS methodology, the R package PopVar(Mohammadi et al 2015) uses genotype and phenotype data of a set of parents to predict genetic variance and progeny means for all possible biparental crosses in a half-diallel mating design [(P*(P-1))/2, where P = number of parents] 
+
 Here, you can find a basic script to run PopVar R package (Mohammadi et al 2015) and examples of input files. 
 Input files contain subsetted data from SunGrains (http://www.sungrains.lsu.edu/) propietary data, therefore names of marker and genotypes have been changed. 
 
