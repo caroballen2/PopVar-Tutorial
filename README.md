@@ -14,3 +14,5 @@ Contains an example of phenotype dataset for PopVar
 
 GeneticMap.csv
 Contains an example of genetic map file for PopVar
+
+![plot](<img width="803" alt="PopVar" src="https://github.com/caroballen2/PopVar-Tutorial/assets/95701434/35a3b7d6-37ae-4b70-a5db-3636d3942ac4">)
