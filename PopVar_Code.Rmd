@@ -1,0 +1,272 @@
+---
+title: "Wheat CAP Genomic Selection/Prediction Workshop: POPVAR"
+author: "Carolina Ballen-Taborda (acballe@clemson.edu)"
+date: "07/23/2023"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### The purpose of this script is to run the PopVar function for parents OF HISTORICAL LINES/GENOTYPES
+
+### Load libraries en set working directory.
+
+```{r, include=FALSE}
+
+#------------------------------------Install and call packages------------------------------------#
+#install.packages("PopVar")
+
+library(PopVar)
+library(dplyr)
+library(ggplot2)
+
+#------------------------------------Set working directory----------------------------------------#
+setwd("/Users/CaroBallen/Documents/10.Projects2023/PopVar_Workshop/") #Change this path
+getwd()
+
+```
+
+### Read in input files
+
+#Marker file
+1: homozygous for minor allele
+0: heterozygous
+-1: homozygous for major allele
+
+#Genetic map
+cM info to simulate recombinations
+
+#Phenotypic data
+Estimated BLUPs/BLUEs
+
+#Parent list
+PopVar will simulate progeny for all possible pairwise combinations in a half-diallel mating design [(P*(P-1))/2; P = number of parents]
+
+```{r Read files for markers}
+
+#---------------------------------------Open Genotype file-------------------------------------------#
+markers <- read.csv(file = "MarkersData.csv", header=T, row.names=1, sep=",", stringsAsFactors=F, check.names = F)
+markers <- markers - 1
+markers[1:5, 1:5]
+dim(markers) #500 genotypes and 1000 SNP markers (as an example)
+
+#----------------------------------------Open Genetic Map--------------------------------------------#
+GenMap <- read.csv(file = "GeneticMap.csv", header=T, row.names=1, sep=",", stringsAsFactors=F, check.names = F)
+GenMap[1:5,]
+dim(GenMap) #1000 SNP markers
+knitr::kable(GenMap %>% group_by(chr) %>% count(), "pipe") #distribution across chromosomes
+
+#---------------------------------------Open Phenotype file------------------------------------------#
+pheno <- read.csv(file = "PhenoFile.csv", header=T, row.names=1, sep=",", stringsAsFactors=F, check.names = F)
+pheno[1:5,]
+dim(pheno) #500 genotypes and 4 traits
+
+#---------------------------------------Open List of parents-----------------------------------------#
+#Here I am doing a random sampling of 10 parents, but you would need to have a list of parents
+set.seed(1234)
+parentList <- pheno %>% sample_n(10) %>% select(Genotype) #select 10 parents
+parentList1 <- parentList$Genotype
+
+#--------------------Make sure markers and names match between files----------------------------------#
+identical(colnames(markers), GenMap$SNP) 
+identical(rownames(markers), pheno$Genotype)
+table(parentList$Genotype %in% rownames(markers))
+table(parentList$Genotype %in% pheno$Genotype)
+
+```
+
+## Get data ready
+
+```{r Run PopVar, results="hide"}
+
+#-----------------------------set number of markers to work with------------------------------------#
+#set the number of markers to be sampled randomly. It is because having large marker data (e.g. 15K SNPs) will take a lot of time to run.
+nMarkersToKeep <- 100 #just an example to run fast
+
+MarkersToKeep <- markers[sort(sample(length(markers), nMarkersToKeep))] #get marker data
+MarkersToKeep[1:5,1:5]
+dim(MarkersToKeep)
+Markerslist <- colnames(MarkersToKeep) #make a list of the markers
+write.csv(Markerslist, file = "Markerslist.csv") #if you sampled markers, save for reproducibility
+GenMapInfo <- GenMap[Markerslist,] #get cM data
+GenMapInfo[1:5,]
+dim(GenMapInfo)
+identical(rownames(GenMapInfo), colnames(MarkersToKeep)) #make sure names match
+sampledMarkers <- table(GenMapInfo$chr)
+write.csv(sampledMarkers, file = "sampledMarkers.csv") #if you sampled markers, save for reproducibility
+
+#-----------------------------format marker file------------------------------------#
+#do the formatting for PopVar with the row and col names inside the matrix. PopVar receives the marker matrix to have the names of taxa and markers _in the matrix itself_ rather than as row names and column names
+firstrow <- c(colnames(MarkersToKeep)) #get the first row information
+firstcol <- c("name", rownames(MarkersToKeep)) #get the first column information
+markers1 <- rbind(firstrow, MarkersToKeep) #bind the row and the data frame
+markers1[1:5,]
+dim(markers1)
+markers2 <- cbind(firstcol, markers1) #bind the column and the data frame
+markers2[1:5,]
+dim(markers2)
+```
+
+#Get information about popvar parameters and options
+
+```{r, include=FALSE}
+
+??popvar
+??pop.predict #select pop.predict
+
+```
+
+#### Run PopVar
+
+Run the PopVar and save output.
+
+```{r}
+#Indicate traits names to work with
+traits <- c("BLUPs_Yield", "BLUPs_TestWt", "BLUPs_HeadDate", "BLUPs_PlantHt") #a list of trait names, it is recommended to run all traits together to get the predicted correlated responses and correlation between all pairwise traits
+traits
+
+#check input files
+markers2[1:5,]
+pheno[1:5,]
+GenMapInfo[1:5,]
+parentList1
+
+#Simulations, you can modify parameters 
+popVarOut <- pop.predict(G.in=markers2, y.in=pheno[,c("Genotype", traits)], map.in=GenMapInfo, parents=parentList1, models = c("rrBLUP"), nSim=25, nInd = 200, return.raw = T)
+
+#The function returns a list, one element of which is called predictions.This element is itself a list of matrices containing the predictions for each trait. They can be combined as such:
+PopVar_pred <- as.data.frame(popVarOut$predictions) #get the predictions
+df_PopVar_pred <- data.frame(lapply(PopVar_pred, unlist), stringsAsFactors=FALSE) #format the output
+df_PopVar_pred[1:5,]
+str(df_PopVar_pred)
+write.csv(df_PopVar_pred, file = "OutputPopVar_Predictions.csv", row.names = F) #save
+
+```
+
+#make scatter plots
+
+```{r}
+
+##### Pred. mid parent GEBV [OR µ] VS. Pred. µ of superior 10% progeny (µsp)
+
+#Plot for yield
+meany <- mean(df_PopVar_pred$BLUPs_Yield_param.df.mu.sp_high)
+meanx <- mean(df_PopVar_pred$BLUPs_Yield_param.df.midPar.GEBV)
+plot <- ggplot() +
+  geom_point(aes(x = BLUPs_Yield_param.df.midPar.GEBV, y = BLUPs_Yield_param.df.mu.sp_high), data=df_PopVar_pred) +
+  guides(color = guide_legend(reverse=TRUE, ncol = 1)) +
+  ggtitle("Yield") +
+  xlab(label = 'Pred. Mid-Parent GEBV') +
+  ylab(label = 'Pred. Mean of top 10% progeny') +
+  geom_hline(yintercept = meany, color = "gray50", linetype = 2) +
+  geom_vline(xintercept = meanx, color = "gray50", linetype = 2) +
+  theme_minimal()
+plot
+
+#Plot for Test Weight
+meany <- mean(df_PopVar_pred$BLUPs_TestWt_param.df.mu.sp_high)
+meanx <- mean(df_PopVar_pred$BLUPs_TestWt_param.df.midPar.GEBV)
+plot <- ggplot() +
+  geom_point(aes(x = BLUPs_TestWt_param.df.midPar.GEBV, y = BLUPs_TestWt_param.df.mu.sp_high), data=df_PopVar_pred) +
+  guides(color = guide_legend(reverse=TRUE, ncol = 1)) +
+  ggtitle("Test Weight") +
+  xlab(label = 'Pred. Mid-Parent GEBV') +
+  ylab(label = 'Pred. Mean of top 10% progeny') +
+  geom_hline(yintercept = meany, color = "gray50", linetype = 2) +
+  geom_vline(xintercept = meanx, color = "gray50", linetype = 2) +
+  theme_minimal()
+plot
+
+#Plot for Heading Date
+meany <- mean(df_PopVar_pred$BLUPs_HeadDate_param.df.mu.sp_high)
+meanx <- mean(df_PopVar_pred$BLUPs_HeadDate_param.df.midPar.GEBV)
+plot <- ggplot() +
+  geom_point(aes(x = BLUPs_HeadDate_param.df.midPar.GEBV, y = BLUPs_HeadDate_param.df.mu.sp_high), data=df_PopVar_pred) +
+  guides(color = guide_legend(reverse=TRUE, ncol = 1)) +
+  ggtitle("Heading Date") +
+  xlab(label = 'Pred. Mid-Parent GEBV') +
+  ylab(label = 'Pred. Mean of top 10% progeny') +
+  geom_hline(yintercept = meany, color = "gray50", linetype = 2) +
+  geom_vline(xintercept = meanx, color = "gray50", linetype = 2) +
+  theme_minimal()
+plot
+
+#Plot for Plant height
+meany <- mean(df_PopVar_pred$BLUPs_PlantHt_param.df.mu.sp_high)
+meanx <- mean(df_PopVar_pred$BLUPs_PlantHt_param.df.midPar.GEBV)
+plot <- ggplot() +
+  geom_point(aes(x = BLUPs_PlantHt_param.df.midPar.GEBV, y = BLUPs_PlantHt_param.df.mu.sp_high), data=df_PopVar_pred) +
+  guides(color = guide_legend(reverse=TRUE, ncol = 1)) +
+  ggtitle("Plant height") +
+  xlab(label = 'Pred. Mid-Parent GEBV') +
+  ylab(label = 'Pred. Mean of top 10% progeny') +
+  geom_hline(yintercept = meany, color = "gray50", linetype = 2) +
+  geom_vline(xintercept = meanx, color = "gray50", linetype = 2) +
+  theme_minimal()
+plot
+
+##### Pred. genetic variance (VG) VS. Pred. mid parent GEBV [OR µ]
+
+#Plot for yield
+meany <- mean(df_PopVar_pred$BLUPs_Yield_param.df.midPar.GEBV)
+meanx <- mean(df_PopVar_pred$BLUPs_Yield_param.df.pred.varG)
+plot <- ggplot() +
+  geom_point(aes(x = BLUPs_Yield_param.df.pred.varG, y = BLUPs_Yield_param.df.midPar.GEBV), data=df_PopVar_pred) +
+  guides(color = guide_legend(reverse=TRUE, ncol = 1)) +
+  ggtitle("Yield") +
+  xlab(label = 'Pred. Genetic Variance') +
+  ylab(label = 'Pred. Mean of top 10% progeny') +
+  geom_hline(yintercept = meany, color = "gray50", linetype = 2) +
+  geom_vline(xintercept = meanx, color = "gray50", linetype = 2) +
+  theme_minimal()
+plot
+
+##### Pred. mid parent GEBV [OR µ]
+
+#Plot for yield vs. Heading date
+meany <- mean(df_PopVar_pred$BLUPs_Yield_param.df.midPar.GEBV)
+meanx <- mean(df_PopVar_pred$BLUPs_HeadDate_param.df.midPar.GEBV)
+plot <- ggplot() +
+  geom_point(aes(x = BLUPs_HeadDate_param.df.midPar.GEBV, y = BLUPs_Yield_param.df.midPar.GEBV), data=df_PopVar_pred) +
+  guides(color = guide_legend(reverse=TRUE, ncol = 1)) +
+  ggtitle("Yield vs. Heading date") +
+  xlab(label = 'Pred. Mid-Parent GEBV for HD') +
+  ylab(label = 'Pred. Mid-Parent GEBV for Yield') +
+  geom_hline(yintercept = meany, color = "gray50", linetype = 2) +
+  geom_vline(xintercept = meanx, color = "gray50", linetype = 2) +
+  theme_minimal()
+plot
+
+#Plot for yield vs. Plant height
+meany <- mean(df_PopVar_pred$BLUPs_Yield_param.df.midPar.GEBV)
+meanx <- mean(df_PopVar_pred$BLUPs_PlantHt_param.df.midPar.GEBV)
+plot <- ggplot() +
+  geom_point(aes(x = BLUPs_PlantHt_param.df.midPar.GEBV, y = BLUPs_Yield_param.df.midPar.GEBV), data=df_PopVar_pred) +
+  guides(color = guide_legend(reverse=TRUE, ncol = 1)) +
+  ggtitle("Yield vs. Plant height") +
+  xlab(label = 'Pred. Mid-Parent GEBV for PH') +
+  ylab(label = 'Pred. Mid-Parent GEBV for Yield') +
+  geom_hline(yintercept = meany, color = "gray50", linetype = 2) +
+  geom_vline(xintercept = meanx, color = "gray50", linetype = 2) +
+  theme_minimal()
+plot
+
+```
+
+### Packages info
+remove list and Session Info
+```{r}
+
+#clear environment
+#rm(list = ls())
+
+session <- sessionInfo()
+session
+```
