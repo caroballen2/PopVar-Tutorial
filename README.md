@@ -15,7 +15,7 @@ Contains an example of phenotype dataset for PopVar
 GeneticMap.csv
 Contains an example of genetic map file for PopVar
 
-# References
+## References
 
 Mohammadi, M., Tiede, T., and Smith, K.P. (2015). PopVar: A genome-wide procedure for predicting genetic variance and correlated response in biparental breeding populations. Crop Science 55, 2068-2077.
 https://acsess.onlinelibrary.wiley.com/doi/full/10.2135/cropsci2015.01.0030
