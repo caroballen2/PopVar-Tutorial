@@ -10,6 +10,9 @@ Input files contain subsetted data from SunGrains (http://www.sungrains.lsu.edu/
 PopVar_Code.Rmd
 Contains a basic PopVar R script 
 
+PopVar_Code.html
+PopVar code-results as html
+
 MarkersData.csv
 Contains an example of SNP dataset for PopVar
 
